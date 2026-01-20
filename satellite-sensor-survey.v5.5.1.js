@@ -1,3 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- v5.5.1: CRITICAL FIX 
+
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Satellite Sensor Survey v5.5.1 - Form Detection Fix</title>
+    <style>
+        :root {
+            --color-primary: #2180A3;
+            --color-primary-hover: #1D6E80;
+            --color-success: #32B8C6;
+            --color-error: #C0152F;
+            --color-warning: #A84B2F;
+            --color-bg: #FCFCF9;
+            --color-surface: #FFFFFF;
+            --color-text: #134252;
+            --color-text-secondary: #628076;
+            --color-border: rgba(94, 82, 64, 0.2);
+            --color-shadow: rgba(0, 0, 0, 0.08);
+            --radius: 8px;
+            --spacing: 16px;
+        }
+
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--color-bg); color: var(--color-text); line-height: 1.5; }
+        .container { max-width: 1400px; margin: 0 auto; padding: var(--spacing); }
+        header { background: var(--color-surface); border-bottom: 1px solid var(--color-border); padding: var(--spacing) 0; margin-bottom: var(--spacing); }
+        header h1 { margin: 0; font-size: 28px; color: var(--color-primary); }
+        .header-subtitle { color: var(--color-text-secondary); font-size: 14px; margin-top: 4px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing); margin-bottom: var(--spacing); }
+        .stat-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: var(--spacing); text-align: center; box-shadow: 0 2px 4px var(--color-shadow); }
+        .stat-value { font-size: 32px; font-weight: 600; color: var(--color-primary); margin: 8px 0; }
+        .stat-label { font-size: 12px; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+        .toolbar { display: flex; gap: var(--spacing); margin-bottom: var(--spacing); flex-wrap: wrap; align-items: center; }
+        .search-box { flex: 1; min-width: 250px; display: flex; gap: 8px; }
+        .search-box input { flex: 1; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius); font-size: 14px; background: var(--color-surface); color: var(--color-text); }
+        .search-box input::placeholder { color: var(--color-text-secondary); }
+        .search-box input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(33, 128, 141, 0.1); }
+        .btn { padding: 10px 16px; border: none; border-radius: var(--radius); cursor: pointer; font-size: 14px; font-weight: 500; transition: all 150ms ease; display: inline-flex; align-items: center; gap: 8px; }
+        .btn-primary { background: var(--color-primary); color: white; }
+        .btn-primary:hover { background: var(--color-primary-hover); box-shadow: 0 4px 8px rgba(33, 128, 141, 0.2); }
+        .btn-secondary { background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary); }
+        .btn-secondary:hover { background: rgba(33, 128, 141, 0.05); }
+        .btn-small { padding: 6px 12px; font-size: 12px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .content-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing); margin-bottom: var(--spacing); }
+        @media (max-width: 1200px) { .content-grid { grid-template-columns: 1fr; } }
+        .panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: var(--spacing); box-shadow: 0 2px 4px var(--color-shadow); }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing); border-bottom: 2px solid var(--color-border); padding-bottom: 12px; }
+        .panel-header h2 { margin: 0; font-size: 18px; color: var(--color-primary); }
+        .filter-group { display: flex; gap: 8px; margin-bottom: var(--spacing); flex-wrap: wrap; }
+        .filter-btn { padding: 8px 12px; border: 1px solid var(--color-border); background: var(--color-surface); border-radius: var(--radius); cursor: pointer; font-size: 12px; transition: all 150ms ease; color: var(--color-text); }
+        .filter-btn.active { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+        .filter-btn:hover { border-color: var(--color-primary); }
+        .table-wrapper { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--color-border); }
+        table { width: 100%; border-collapse: collapse; background: var(--color-surface); }
+        thead { background: rgba(33, 128, 141, 0.08); border-bottom: 2px solid var(--color-border); }
+        th { padding: 12px; text-align: left; font-weight: 600; font-size: 12px; color: var(--color-primary); text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; user-select: none; }
+        th:hover { background: rgba(33, 128, 141, 0.12); }
+        td { padding: 12px; border-bottom: 1px solid var(--color-border); font-size: 13px; }
+        tbody tr { transition: background 150ms ease; }
+        tbody tr:hover { background: rgba(33, 128, 141, 0.04); cursor: pointer; }
+        tbody tr.selected { background: rgba(33, 128, 141, 0.1); }
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .badge-operational { background: rgba(50, 184, 198, 0.2); color: var(--color-success); }
+        .badge-testing { background: rgba(230, 129, 97, 0.2); color: var(--color-warning); }
+        .badge-decommissioned { background: rgba(192, 21, 47, 0.2); color: var(--color-error); }
+        .detail-view { display: grid; gap: 12px; }
+        .detail-row { display: grid; grid-template-columns: 150px 1fr; gap: 12px; }
+        .detail-label { font-weight: 600; color: var(--color-primary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .detail-value { color: var(--color-text); font-size: 14px; word-break: break-word; }
+        .sensors-list { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 6px; }
+        .sensor-tag { background: rgba(33, 128, 141, 0.15); color: var(--color-primary); padding: 4px 10px; border-radius: 4px; font-size: 12px; display: inline-block; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); overflow: auto; }
+        .modal.active { display: flex; align-items: center; justify-content: center; }
+        .modal-content { background-color: var(--color-surface); padding: var(--spacing); border-radius: var(--radius); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2); max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing); padding-bottom: var(--spacing); border-bottom: 1px solid var(--color-border); }
+        .modal-header h3 { margin: 0; color: var(--color-primary); }
+        .modal h2 { margin-top: 0; margin-bottom: var(--spacing); color: var(--color-primary); }
+        .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: var(--color-text-secondary); }
+        .modal-close:hover { color: var(--color-text); }
+        .form-group { margin-bottom: var(--spacing); }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 600; color: var(--color-text); font-size: 13px; }
+        .form-group.required label::after { content: ' *'; color: var(--color-error); }
+        .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius); font-size: 13px; font-family: inherit; color: var(--color-text); background: var(--color-surface); }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(33, 128, 141, 0.1); }
+        .form-group input.error, .form-group textarea.error, .form-group select.error { border-color: var(--color-error); background-color: rgba(192, 21, 47, 0.05); }
+        .form-group textarea { resize: vertical; min-height: 100px; }
+        .form-actions { display: flex; gap: 12px; margin-top: var(--spacing); }
+        .form-actions button { flex: 1; }
+        .modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: var(--spacing); padding-top: var(--spacing); border-top: 1px solid var(--color-border); }
+        .empty-state { text-align: center; padding: 40px var(--spacing); color: var(--color-text-secondary); }
+        .empty-state-icon { font-size: 48px; margin-bottom: 12px; }
+        .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(33, 128, 141, 0.2); border-top-color: var(--color-primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .alert { padding: 12px 16px; border-radius: var(--radius); margin-bottom: var(--spacing); display: flex; align-items: center; gap: 12px; animation: slideIn 300ms ease-out; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .alert-success { background: rgba(50, 184, 198, 0.1); color: var(--color-success); border: 1px solid rgba(50, 184, 198, 0.3); }
+        .alert-error { background: rgba(192, 21, 47, 0.1); color: var(--color-error); border: 1px solid rgba(192, 21, 47, 0.3); }
+        .alert-info { background: rgba(33, 128, 141, 0.1); color: var(--color-primary); border: 1px solid rgba(33, 128, 141, 0.3); }
+        .alert-warning { background: rgba(230, 129, 97, 0.1); color: var(--color-warning); border: 1px solid rgba(230, 129, 97, 0.3); }
+        .tabs { display: flex; border-bottom: 2px solid var(--color-border); margin-bottom: var(--spacing); gap: 4px; }
+        .tab-btn { padding: 12px 16px; background: none; border: none; cursor: pointer; color: var(--color-text-secondary); font-weight: 500; font-size: 14px; border-bottom: 3px solid transparent; transition: all 150ms ease; }
+        .tab-btn.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .validation-error { color: var(--color-error); font-size: 12px; margin-top: 4px; display: block; min-height: 16px; }
+        .storage-indicator { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 8px; background: rgba(50, 184, 198, 0.15); color: var(--color-success); }
+        .csv-info { background: rgba(33, 128, 141, 0.05); border: 1px solid rgba(33, 128, 141, 0.2); border-radius: var(--radius); padding: 12px; margin-bottom: var(--spacing); font-size: 12px; color: var(--color-text-secondary); }
+        .csv-info strong { color: var(--color-primary); }
+        .import-preview { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 12px; margin-top: 12px; max-height: 300px; overflow-y: auto; font-size: 12px; }
+        .import-preview table { font-size: 12px; }
+        .import-preview th, .import-preview td { padding: 6px; }
+        .action-buttons { display: flex; gap: 8px; }
+        .action-btn { padding: 4px 8px; font-size: 11px; white-space: nowrap; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>🛰️ Satellite Sensor Survey v5.4.9</h1>
+            <p class="header-subtitle">Form detection fix - Critical bug resolved <span class="storage-indicator" id="storageIndicator">Local Storage Mode</span></p>
+        </div>
+    </header>
+
+    <main class="container">
+        <div id="alertContainer"></div>
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-label">Total Satellites</div><div class="stat-value" id="statSatellites">0</div></div>
+            <div class="stat-card"><div class="stat-label">Total Sensors</div><div class="stat-value" id="statSensors">0</div></div>
+            <div class="stat-card"><div class="stat-label">Operational</div><div class="stat-value" id="statOperational">0</div></div>
+            <div class="stat-card"><div class="stat-label">Constellations</div><div class="stat-value" id="statConstellations">0</div></div>
+        </div>
+        <div class="toolbar">
+            <div class="search-box"><input type="text" id="searchInput" placeholder="Search..."></div>
+            <button type="button" class="btn btn-primary" id="addSatelliteBtn">+ Add Satellite</button>
+            <button type="button" class="btn btn-secondary" id="importBtn">📤 Import CSV</button>
+            <button type="button" class="btn btn-secondary" id="exportBtn">📥 Export</button>
+        </div>
+        <div class="content-grid">
+            <div class="panel"><div class="panel-header"><h2>Satellites</h2><span id="satelliteCount">0</span></div><div class="tabs"><button type="button" class="tab-btn active" onclick="switchTab('satellites', 'sat-all'); return false;">All</button><button type="button" class="tab-btn" onclick="switchTab('satellites', 'sat-operational'); return false;">Operational</button><button type="button" class="tab-btn" onclick="switchTab('satellites', 'sat-leo'); return false;">LEO</button><button type="button" class="tab-btn" onclick="switchTab('satellites', 'sat-geo'); return false;">GEO</button></div><div class="table-wrapper"><table id="satelliteTable"><thead><tr><th onclick="sortTable('satellites', 'Title')">Name ↕</th><th onclick="sortTable('satellites', 'NORAD_ID')">NORAD ID ↕</th><th>Status</th><th>Orbit</th><th style="width: 80px; text-align: center;">Actions</th></tr></thead><tbody id="satelliteTableBody"><tr><td colspan="5" style="text-align: center;"><div class="loading"></div></td></tr></tbody></table></div></div>
+            <div class="panel"><div class="panel-header"><h2>Sensors</h2><span id="sensorCount">0</span></div><div class="tabs"><button type="button" class="tab-btn active" onclick="switchTab('sensors', 'sen-all'); return false;">All</button><button type="button" class="tab-btn" onclick="switchTab('sensors', 'sen-eo'); return false;">EO</button><button type="button" class="tab-btn" onclick="switchTab('sensors', 'sen-ir'); return false;">IR</button><button type="button" class="tab-btn" onclick="switchTab('sensors', 'sen-sar'); return false;">SAR</button></div><div class="table-wrapper"><table id="sensorTable"><thead><tr><th onclick="sortTable('sensors', 'Title')">Name ↕</th><th>Type</th><th>Satellites</th></tr></thead><tbody id="sensorTableBody"><tr><td colspan="3" style="text-align: center;"><div class="loading"></div></td></tr></tbody></table></div></div>
+        </div>
+        <div class="panel"><div class="panel-header"><h2 id="detailTitle">Satellite Details</h2><div id="detailActions"></div></div><div id="detailContent" class="empty-state"><div class="empty-state-icon">📋</div><p>Select a satellite or sensor</p></div></div>
+    </main>
+
+    <div id="addSatelliteModal" class="modal" onclick="handleModalBackdropClick(event); return false;">
+        <div class="modal-content" onclick="event.stopPropagation();">
+            <div class="modal-header"><h3 id="modalTitle">Add New Satellite</h3><button type="button" class="modal-close" onclick="closeAddSatelliteModal(); return false;">×</button></div>
+            <form id="satelliteForm">
+                <div class="form-group required"><label for="satellite-title">Satellite Name</label><input type="text" id="satellite-title" name="Title" placeholder="Enter satellite name" maxlength="255"><div class="validation-error" id="error-title"></div></div>
+                <div class="form-group required"><label for="satellite-norad">NORAD ID</label><input type="text" id="satellite-norad" name="NORAD_ID" placeholder="Enter NORAD ID" pattern="[0-9]*" maxlength="10"><div class="validation-error" id="error-norad"></div></div>
+                <div class="form-group"><label for="satellite-cospar">COSPAR ID</label><input type="text" id="satellite-cospar" name="COSPAR_ID" placeholder="e.g., 2013-008A" maxlength="20"><div class="validation-error" id="error-cospar"></div></div>
+                <div class="form-group"><label for="satellite-mission">Mission Type</label><input type="text" id="satellite-mission" name="Mission_Type" placeholder="e.g., Earth Observation" maxlength="100"></div>
+                <div class="form-group"><label for="satellite-status">Status</label><select id="satellite-status" name="Status"><option value="Operational">Operational</option><option value="Non-operational">Non-operational</option><option value="Partially operational">Partially operational</option><option value="Unknown">Unknown</option></select></div>
+                <div class="form-group"><label for="satellite-orbit">Orbit Type</label><select id="satellite-orbit" name="Orbit_Type"><option value="">-- Select --</option><option value="LEO">LEO</option><option value="MEO">MEO</option><option value="GEO">GEO</option><option value="SSO">SSO</option></select></div>
+                <div class="form-group"><label for="satellite-launch">Launch Date</label><input type="date" id="satellite-launch" name="Launch_Date"><div class="validation-error" id="error-launch"></div></div>
+                <div class="form-group"><label for="satellite-sensors">Sensor Names</label><textarea id="satellite-sensors" name="Sensor_Names" rows="3" placeholder="Comma-separated" maxlength="500"></textarea></div>
+                <div class="form-actions"><button type="button" class="btn btn-primary" id="saveSatelliteBtn">Save Satellite</button><button type="button" class="btn btn-secondary" onclick="closeAddSatelliteModal(); return false;">Cancel</button></div>
+            </form>
+        </div>
+    </div>
+
+    <div id="importModal" class="modal" onclick="handleImportModalBackdropClick(event); return false;">
+        <div class="modal-content" onclick="event.stopPropagation();">
+            <div class="modal-header"><h3>Import CSV</h3><button type="button" class="modal-close" onclick="closeImportModal(); return false;">×</button></div>
+            <div class="csv-info"><strong>CSV Format:</strong> Title, NORAD_ID, COSPAR_ID, Mission_Type, Status, Orbit_Type, Launch_Date, Sensor_Names</div>
+            <form id="importForm"><div class="form-group"><label for="csvFile">Choose CSV File</label><input type="file" id="csvFile" name="csvFile" accept=".csv"><div class="validation-error" id="error-csv"></div></div><div id="importPreview" class="import-preview" style="display:none;"></div><div class="form-actions"><button type="submit" class="btn btn-primary">Import Data</button><button type="button" class="btn btn-secondary" onclick="closeImportModal(); return false;">Cancel</button></div></form>
+        </div>
+    </div>
+
+    <script>
 /**
  * SATELLITE SENSOR SURVEY v5.5.1
  * 
@@ -792,3 +967,6 @@ function exportToCSV() { Logger.info('Exporting'); }
 // Export formHandler for global access
 window.formHandler = formHandler;
 console.log('✅ Satellite Sensor Survey v5.5.1 loaded and ready');
+    </script>
+</body>
+</html>
