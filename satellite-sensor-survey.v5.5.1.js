@@ -1,10 +1,10 @@
 /**
- * SATELLITE SENSOR SURVEY v5.5.2
+ * SATELLITE SENSOR SURVEY v5.5.3
  * 
  * Enhanced version with integrated SatelliteFormHandler for proper form management
- * Fixes: Form detection, validation, SharePoint REST API integration, Status field default value
+ * Fixes: Form detection, validation, SharePoint REST API integration, Status field, CSV functions, sensors loading
  * 
- * @version 5.5.2
+ * @version 5.5.3
  * @author DevOps Team - NCIA
  * @date 2026-01-20
  */
@@ -148,7 +148,6 @@ class SatelliteFormHandler {
       const element = this.getFormInput(htmlId);
       if (element) {
         if (spField === 'Status') {
-          // Set Status to default value "Operational" instead of clearing it
           element.value = 'Operational';
           this.logger.debug(`Reset ${htmlId} to default: Operational`);
         } else {
@@ -266,7 +265,8 @@ const state = {
     csvPreviewData: [],
     nextId: 1000,
     isLoading: false,
-    isPendingSave: false
+    isPendingSave: false,
+    isImporting: false
 };
 
 // ============================================================================
@@ -289,7 +289,7 @@ const Logger = {
     error: function(msg, data) { this.log(this.levels.ERROR, msg, data); }
 };
 
-Logger.info('🚀 Initializing Satellite Sensor Survey v5.5.2');
+Logger.info('🚀 Initializing Satellite Sensor Survey v5.5.3');
 Logger.info('SharePoint Mode:', config.inSharePoint ? 'YES' : 'NO');
 
 // Initialize form handler
@@ -332,6 +332,150 @@ function loadFromLocalStorage() {
         Logger.error('Load error:', { error: error.message });
         state.satellites = [];
     }
+}
+
+// ============================================================================
+// CSV FUNCTIONS
+// ============================================================================
+
+function parseCSV(text) {
+    const lines = text.split('\n').filter(line => line.trim());
+    if (lines.length === 0) return { headers: [], rows: [] };
+    
+    const headers = lines[0].split(',').map(h => h.trim());
+    const rows = lines.slice(1).map(line => {
+        const values = line.split(',').map(v => v.trim());
+        const row = {};
+        headers.forEach((header, idx) => {
+            row[header] = values[idx] || '';
+        });
+        return row;
+    });
+    
+    return { headers, rows };
+}
+
+function handleCSVFileSelect(event) {
+    const file = event.target?.files?.[0];
+    if (!file) return;
+    
+    Logger.info('CSV file selected', { name: file.name, size: file.size });
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const csv = parseCSV(e.target?.result || '');
+            Logger.info('CSV parsed successfully', { rows: csv.rows.length });
+            state.csvPreviewData = csv.rows.slice(0, 5);
+            document.getElementById('importPreview').style.display = 'block';
+        } catch (error) {
+            Logger.error('CSV parse error', error.message);
+            showAlert('❌ Error parsing CSV', 'error');
+        }
+    };
+    reader.readAsText(file);
+}
+
+function handleCSVImport(event) {
+    event?.preventDefault?.();
+    if (state.isImporting) {
+        Logger.warn('Import already in progress');
+        return false;
+    }
+    
+    const fileInput = document.getElementById('csvFile');
+    const file = fileInput?.files?.[0];
+    if (!file) {
+        showAlert('❌ Please select a CSV file', 'error');
+        return false;
+    }
+    
+    state.isImporting = true;
+    Logger.info('📥 Starting CSV import');
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const csv = parseCSV(e.target?.result || '');
+            let successCount = 0;
+            
+            csv.rows.forEach(row => {
+                if (row.Title && row.NORAD_ID) {
+                    state.satellites.push({
+                        ID: state.nextId++,
+                        Title: row.Title,
+                        NORAD_ID: row.NORAD_ID,
+                        COSPAR_ID: row.COSPAR_ID || '',
+                        Mission_Type: row.Mission_Type || '',
+                        Status: row.Status || 'Operational',
+                        Orbit_Type: row.Orbit_Type || '',
+                        Launch_Date: row.Launch_Date || '',
+                        Expected_Lifetime: '',
+                        Constellation_ID: 1,
+                        Sensor_Names: row.Sensor_Names || '',
+                        Primary_Sensor: ''
+                    });
+                    successCount++;
+                }
+            });
+            
+            saveToLocalStorage();
+            Logger.info('✅ Import complete', { succeeded: successCount });
+            showAlert(`✅ Imported ${successCount} satellites!`, 'success');
+            
+            closeImportModal();
+            filterAndDisplayData();
+            updateStatistics();
+        } catch (error) {
+            Logger.error('Import error', error.message);
+            showAlert('❌ Error importing CSV', 'error');
+        } finally {
+            state.isImporting = false;
+        }
+    };
+    reader.readAsText(file);
+    return false;
+}
+
+function exportToCSV() {
+    if (!state.satellites || state.satellites.length === 0) {
+        showAlert('❌ No data to export', 'error');
+        return false;
+    }
+    
+    Logger.info('📥 Exporting CSV');
+    
+    try {
+        const headers = ['Title', 'NORAD_ID', 'COSPAR_ID', 'Mission_Type', 'Status', 'Orbit_Type', 'Launch_Date', 'Sensor_Names'];
+        const csv = [
+            headers.join(','),
+            ...state.satellites.map(sat => 
+                headers.map(h => {
+                    const val = sat[h] || '';
+                    return typeof val === 'string' && val.includes(',') ? `"${val}"` : val;
+                }).join(',')
+            )
+        ].join('\n');
+        
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        
+        link.setAttribute('href', url);
+        link.setAttribute('download', `satellites_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        Logger.info('✅ CSV exported', { rows: state.satellites.length });
+        showAlert('✅ CSV exported!', 'success');
+    } catch (error) {
+        Logger.error('Export error', error.message);
+        showAlert('❌ Error exporting CSV', 'error');
+    }
+    return false;
 }
 
 // ============================================================================
@@ -388,9 +532,9 @@ function attachEventListeners() {
             }
         });
 
-        document.getElementById('addSatelliteBtn')?.addEventListener('click', (e) => { e.preventDefault(); showAddSatelliteModal(); });
-        document.getElementById('importBtn')?.addEventListener('click', (e) => { e.preventDefault(); showImportModal(); });
-        document.getElementById('exportBtn')?.addEventListener('click', (e) => { e.preventDefault(); exportToCSV(); });
+        document.getElementById('addSatelliteBtn')?.addEventListener('click', (e) => { e.preventDefault(); showAddSatelliteModal(); return false; });
+        document.getElementById('importBtn')?.addEventListener('click', (e) => { e.preventDefault(); showImportModal(); return false; });
+        document.getElementById('exportBtn')?.addEventListener('click', (e) => { e.preventDefault(); exportToCSV(); return false; });
         document.getElementById('searchInput')?.addEventListener('input', (e) => { state.searchTerm = (e.target?.value ?? '').toLowerCase(); filterAndDisplayData(); });
         document.getElementById('csvFile')?.addEventListener('change', handleCSVFileSelect);
         document.getElementById('importForm')?.addEventListener('submit', handleCSVImport);
@@ -478,7 +622,10 @@ async function loadSatellites() {
 }
 
 async function loadSensors() {
-    if (!config.inSharePoint || !config.siteUrl) { state.sensors = []; return; }
+    if (!config.inSharePoint || !config.siteUrl) {
+        state.sensors = [];
+        return Promise.resolve();
+    }
     try {
         const url = config.siteUrl + `/_api/web/lists/getbytitle('${config.sensorList}')/items?$select=ID,Title,Sensor_Type,Description,N_of_Bands,Resolution_Min_m,Resolution_Max_m,Swath_Min_km,Swath_Max_km,Satellite_Names&$top=5000`;
         const response = await fetch(url, {
@@ -497,9 +644,11 @@ async function loadSensors() {
             Satellite_Names: item?.Satellite_Names ?? ''
         }));
         Logger.info('✅ Sensors loaded', { count: state.sensors.length });
+        return Promise.resolve();
     } catch (error) {
         Logger.error('Error loading sensors:', { error: error.message });
         state.sensors = [];
+        return Promise.resolve();
     }
 }
 
@@ -782,12 +931,9 @@ function updateStatistics() {
 }
 function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
 function showAlert(message, type = 'info') { const container = document.getElementById('alertContainer'); if (!container) return; const alert = document.createElement('div'); alert.className = `alert alert-${type}`; alert.textContent = message; container.appendChild(alert); setTimeout(() => alert.remove(), 5000); }
-function showImportModal() { const modal = document.getElementById('importModal'); if (modal) modal.classList.add('active'); return false; }
-function closeImportModal() { const modal = document.getElementById('importModal'); if (modal) modal.classList.remove('active'); return false; }
-function handleCSVFileSelect(event) { Logger.info('CSV selected'); }
-function handleCSVImport(event) { event.preventDefault(); return false; }
-function exportToCSV() { Logger.info('Exporting'); }
+function showImportModal() { const modal = document.getElementById('importModal'); if (modal) { modal.classList.add('active'); return false; } }
+function closeImportModal() { const modal = document.getElementById('importModal'); if (modal) modal.classList.remove('active'); document.getElementById('csvFile').value = ''; document.getElementById('importPreview').style.display = 'none'; return false; }
 
 // Export formHandler for global access
 window.formHandler = formHandler;
-console.log('✅ Satellite Sensor Survey v5.5.2 loaded and ready');
+console.log('✅ Satellite Sensor Survey v5.5.3 loaded and ready');
