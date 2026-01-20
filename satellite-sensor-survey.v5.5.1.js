@@ -1,10 +1,10 @@
 /**
- * SATELLITE SENSOR SURVEY v5.5.3
+ * SATELLITE SENSOR SURVEY v5.5.4
  * 
  * Enhanced version with integrated SatelliteFormHandler for proper form management
- * Fixes: Form detection, validation, SharePoint REST API integration, Status field, CSV functions, sensors loading
+ * Fixes: CSV import to SharePoint, sensors table rendering, infinite loading
  * 
- * @version 5.5.3
+ * @version 5.5.4
  * @author DevOps Team - NCIA
  * @date 2026-01-20
  */
@@ -289,7 +289,7 @@ const Logger = {
     error: function(msg, data) { this.log(this.levels.ERROR, msg, data); }
 };
 
-Logger.info('🚀 Initializing Satellite Sensor Survey v5.5.3');
+Logger.info('🚀 Initializing Satellite Sensor Survey v5.5.4');
 Logger.info('SharePoint Mode:', config.inSharePoint ? 'YES' : 'NO');
 
 // Initialize form handler
@@ -394,34 +394,83 @@ function handleCSVImport(event) {
     Logger.info('📥 Starting CSV import');
     
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
         try {
             const csv = parseCSV(e.target?.result || '');
             let successCount = 0;
             
+            const newSatellites = [];
             csv.rows.forEach(row => {
                 if (row.Title && row.NORAD_ID) {
-                    state.satellites.push({
-                        ID: state.nextId++,
-                        Title: row.Title,
-                        NORAD_ID: row.NORAD_ID,
-                        COSPAR_ID: row.COSPAR_ID || '',
-                        Mission_Type: row.Mission_Type || '',
-                        Status: row.Status || 'Operational',
-                        Orbit_Type: row.Orbit_Type || '',
-                        Launch_Date: row.Launch_Date || '',
-                        Expected_Lifetime: '',
-                        Constellation_ID: 1,
-                        Sensor_Names: row.Sensor_Names || '',
-                        Primary_Sensor: ''
+                    newSatellites.push({
+                        '__metadata': { 'type': 'SP.Data.Satellite_x005f_FixedListItem' },
+                        'Title': (row.Title ?? '')?.trim?.() ?? '',
+                        'NORAD_ID': parseInt((row.NORAD_ID ?? '')?.trim?.() ?? 0),
+                        'COSPAR_ID': (row.COSPAR_ID ?? '')?.trim?.() ?? '',
+                        'Mission_Type': (row.Mission_Type ?? '')?.trim?.() ?? '',
+                        'Status': row.Status || 'Operational',
+                        'Orbit_Type': (row.Orbit_Type ?? '')?.trim?.() ?? '',
+                        'Launch_Date': row.Launch_Date ? new Date(row.Launch_Date).toISOString() : null,
+                        'Sensor_Names': (row.Sensor_Names ?? '')?.trim?.() ?? ''
                     });
                     successCount++;
                 }
             });
             
-            saveToLocalStorage();
-            Logger.info('✅ Import complete', { succeeded: successCount });
-            showAlert(`✅ Imported ${successCount} satellites!`, 'success');
+            if (config.inSharePoint && config.siteUrl) {
+                Logger.info('📤 Pushing to SharePoint', { count: newSatellites.length });
+                const contextUrl = config.siteUrl + '/_api/contextinfo';
+                const digestResponse = await fetch(contextUrl, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json;odata=verbose' },
+                    credentials: 'include',
+                    signal: AbortSignal.timeout(config.apiTimeout)
+                });
+                
+                if (!digestResponse.ok) throw new Error('Failed to get digest');
+                const digestData = await digestResponse.json();
+                const digest = digestData?.d?.GetContextWebInformation?.FormDigestValue;
+                
+                for (const satellite of newSatellites) {
+                    const url = config.siteUrl + `/_api/web/lists/getbytitle('${config.satelliteList}')/items`;
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose', 'X-RequestDigest': digest },
+                        body: JSON.stringify(satellite),
+                        credentials: 'include',
+                        signal: AbortSignal.timeout(config.apiTimeout)
+                    });
+                    if (!response.ok && response.status !== 201) {
+                        Logger.warn(`Failed to import satellite: ${satellite.Title}`);
+                    }
+                }
+                
+                Logger.info('✅ Import complete - reloading from SharePoint', { succeeded: successCount });
+                showAlert(`✅ Imported ${successCount} satellites to SharePoint!`, 'success');
+                await loadSatellites();
+            } else {
+                csv.rows.forEach(row => {
+                    if (row.Title && row.NORAD_ID) {
+                        state.satellites.push({
+                            ID: state.nextId++,
+                            Title: row.Title,
+                            NORAD_ID: row.NORAD_ID,
+                            COSPAR_ID: row.COSPAR_ID || '',
+                            Mission_Type: row.Mission_Type || '',
+                            Status: row.Status || 'Operational',
+                            Orbit_Type: row.Orbit_Type || '',
+                            Launch_Date: row.Launch_Date || '',
+                            Expected_Lifetime: '',
+                            Constellation_ID: 1,
+                            Sensor_Names: row.Sensor_Names || '',
+                            Primary_Sensor: ''
+                        });
+                    }
+                });
+                saveToLocalStorage();
+                Logger.info('✅ Import complete - saved to localStorage', { succeeded: successCount });
+                showAlert(`✅ Imported ${successCount} satellites!`, 'success');
+            }
             
             closeImportModal();
             filterAndDisplayData();
@@ -624,6 +673,7 @@ async function loadSatellites() {
 async function loadSensors() {
     if (!config.inSharePoint || !config.siteUrl) {
         state.sensors = [];
+        document.getElementById('sensorTableBody').innerHTML = '<tr><td colspan="3" class="empty-state">No sensors available (local mode)</td></tr>';
         return Promise.resolve();
     }
     try {
@@ -644,12 +694,23 @@ async function loadSensors() {
             Satellite_Names: item?.Satellite_Names ?? ''
         }));
         Logger.info('✅ Sensors loaded', { count: state.sensors.length });
+        renderSensorTable();
         return Promise.resolve();
     } catch (error) {
         Logger.error('Error loading sensors:', { error: error.message });
         state.sensors = [];
+        document.getElementById('sensorTableBody').innerHTML = '<tr><td colspan="3" class="empty-state">Error loading sensors</td></tr>';
         return Promise.resolve();
     }
+}
+
+function renderSensorTable() {
+    const tbody = document.getElementById('sensorTableBody');
+    if (!tbody) return;
+    if (state.sensors.length === 0) { tbody.innerHTML = '<tr><td colspan="3" class="empty-state">No sensors</td></tr>'; return; }
+    tbody.innerHTML = state.sensors.map(sensor => {
+        return `<tr><td><strong>${escapeHtml(sensor?.Title ?? '')}</strong></td><td>${escapeHtml(sensor?.Sensor_Type ?? '')}</td><td>${escapeHtml(sensor?.Satellite_Names ?? '')}</td></tr>`;
+    }).join('');
 }
 
 // ============================================================================
@@ -936,4 +997,4 @@ function closeImportModal() { const modal = document.getElementById('importModal
 
 // Export formHandler for global access
 window.formHandler = formHandler;
-console.log('✅ Satellite Sensor Survey v5.5.3 loaded and ready');
+console.log('✅ Satellite Sensor Survey v5.5.4 loaded and ready');
